@@ -83,7 +83,6 @@ type
     procedure DoThreadDone(Sender: TObject);
     procedure DoThreadStatus(Sender: TObject);
     procedure EnableEdits;
-    procedure LoadDepends(FileName: string);
     procedure LoadPackage(FileName: string);
     procedure SavePackage(FileName: string);
   end;
@@ -94,27 +93,6 @@ var
 implementation
 
 {$R *.lfm}
-
-procedure TComposeForm.LoadDepends(FileName: string);
-var
-  D: IDocument;
-  N: INode;
-  F: IFiler;
-  S: string;
-begin
-  S := FileName + '.mkdeb';
-  if FileExists(S) then
-  begin
-    D := DocumentCreate;
-    D.Load(S);
-    N := D.Force('data');
-    F := N.Filer;
-    S := F.ReadStr('depends');
-    FPackage.Depends := S.Split(', ');
-  end
-  else
-    FPackage.Depends.Clear;
-end;
 
 procedure TComposeForm.SavePackage(FileName: string);
 var
@@ -141,8 +119,6 @@ begin
     else if Control is TCheckBox then
       F.WriteBool(Control.Name, TCheckBox(Control).Checked);
   end;
-  if FileArchitecture(FileName) = FileArchitecture(ParamStr(0)) then
-    F.WriteStr('depends', FPackage.Depends.Join(', '));
   S := GetTempDir(True);
   S := PathCombine(S, ExtractFileNameOnly(FileName) + '.png');
   FCustom.SaveToFile(S);
@@ -182,7 +158,6 @@ begin
       else if Control is TCheckBox then
         TCheckBox(Control).Checked := F.ReadBool(Control.Name);
     end;
-    FPackage.Depends := F.ReadStr('depends').Split(', ');
     FCustom.Clear;
     S := F.ReadStr('icon');
     if S.Length > 1000 then
@@ -407,12 +382,6 @@ begin
     Validate(FileExists(FPackage.FileName), 'Application file not found', AppEdit);
     S := FileArchitecture(FPackage.FileName);
     Validate(S <> '', 'Application file is invalid', AppEdit);
-    if S <> FileArchitecture(ParamStr(0)) then
-    begin
-      LoadDepends(FPackage.FileName);
-      S := FileArchitecture(ParamStr(0));
-      Validate(FPackage.Depends.Length > 0, 'Build package for ' + S + ' first', AppEdit);
-    end;
     IconImage.CopyTo(FPackage.Icon);
     S := FileExtractPath(FPackage.FileName);
     ChDir(S);

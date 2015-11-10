@@ -29,6 +29,7 @@ type
     FBasePath: string;
     FThread: TSimpleThread;
     FArchitecture: string;
+    FExtraDepends: StringArray;
     procedure BuildDepends;
     procedure Desktop;
     procedure Generate;
@@ -75,6 +76,9 @@ begin
   Icon := NewBitmap;
 end;
 
+var
+  LibCache: StringArray;
+
 function DependsRun(const ExeName: string; const Commands: array of string): string;
 begin
   RunCommand(ExeName, Commands, Result);
@@ -107,42 +111,35 @@ begin
   Result.Sort(soAscend);
 end;
 
-function RestrictLibs(constref Value: string): Boolean;
-const
-  IgnoreList: array[0..10] of string = (
-    'libatk',
-    'libX',
-    'libxc',
-    'libglib',
-    'libfreetype',
-    'libharfbuzz',
-    'libffi',
-    'libthai',
-    'libgraphite',
-    'libdatrie',
-    'libfontconfig'
-  );
+function Needed(constref Value: string): Boolean;
+begin
+  Result := Value.Contains('NEEDED');
+end;
+
+function LookupCache(const Value: string): string;
 var
-  S, I: string;
+  Lib: string;
 begin
+  Result := '/' + Value.SecondOf('[').FirstOf(']');
+  for Lib in LibCache do
+    if Lib.Contains(Result) then
+    begin
+      Result := Lib.SecondOf(' => ');
+      Exit;
+    end;
+  Result := 'invalid';
+end;
+
+function ExtraLibs(constref Value: string): Boolean;
+begin
+  Result := False;
+  if not Value.BeginsWith('/usr/lib/') then
+    Exit;
+  if Value.Contains('/libX11') then
+    Exit;
+  if Value.Contains('/libcairo') then
+    Exit;
   Result := True;
-  S := Value.Trim;
-  for I in IgnoreList do
-    if S.BeginsWith(I) then
-      Exit(False);
-end;
-
-function UserLibs(constref Value: string): Boolean;
-begin
-  Result := Value.Contains('/usr/lib/');
-  if Result then
-    Result := RestrictLibs(Value.Trim)
-end;
-
-function UserFile(const Value: string): string;
-begin
-  Result := Value.SecondOf(' => ');
-  Result := Result.FirstOf(' (').Trim;
 end;
 
 function FilePackage(const Value: string): string;
@@ -159,27 +156,35 @@ begin
   S := S.LineWith('Version: ');
   S := S.SecondOf(': ');
   S := S.FirstOf('-');
-  S := S.FirstOf('~');
   S := S.FirstOf('ubuntu');
   Result := Value + ' (>= ' + S +  ')';
+end;
+
+function Depends(FileName: string): string;
+begin
+  Result := '';
 end;
 
 procedure TDebianPackage.BuildDepends;
 var
   Items: StringArray;
+  S: string;
 begin
-  if FArchitecture <> FileArchitecture(ParamStr(0)) then
-    Exit;
   Depends.Clear;
-  FThread.Status := 'Finding dependencies';
-  Items := DependsRun('ldd', FileName).Split(#10);
-  Items := Items.Filter(UserLibs);
-  FThread.Status := 'Looking up packages';
-  Items := StrTransform(Items, UserFile);
+  FThread.Status := 'Building library cache';
+  LibCache := DependsRun('ldconfig', ['-p']).Split(#10);
+  FThread.Status := 'Reading libraries';
+  Items := DependsRun('readelf', ['-d', FileName]).Split(#10);
+  Items := Items.Filter(Needed);
+  Items := StrTransform(Items, LookupCache);
+  if Items.IndexOf('invalid') > -1 then
+    Exit;
+  Items := Items.Filter(ExtraLibs);
+  FThread.Status := 'Finding packages';
   Items := StrTransform(Items, FilePackage);
+  for S in FExtraDepends do
+    Items.Push(S);
   Items := StrUnique(Items);
-  Items := Items.Filter(RestrictLibs);
-  FThread.Status := 'Resolving package versions';
   Depends := StrTransform(Items, PackageVersion);
 end;
 
@@ -306,6 +311,8 @@ begin
 end;
 
 procedure TDebianPackage.Build(Thread: TSimpleThread);
+var
+  S: string;
 begin
   FailReason := '';
   FThread := nil;
@@ -315,6 +322,11 @@ begin
     FailReason := 'Not a valid application file';
     Exit;
   end;
+  FExtraDepends.Clear;
+  S := Version.SecondOf(',');
+  if S <> '' then
+    FExtraDepends := S.Split(',');
+  Version := Version.FirstOf(',');
   FThread := Thread;
   FBasePath := FileExtractPath(FileName);
   FBasePath := PathCombine(FBasePath, Name + '_' + Version);
