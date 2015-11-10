@@ -212,6 +212,7 @@ object ComposeForm: TComposeForm
     Hint = 'Full path to your application file'
     Top = 120
     Width = 372
+    OnChange = AppEditChange
     TabOrder = 0
   end
   object IconButton: TThinButton
@@ -478,7 +479,7 @@ object ComposeForm: TComposeForm
   end
   object ApplicationProperties: TApplicationProperties
     HintHidePause = 0
-    HintPause = 250
+    HintPause = 0
     OnShowHint = ApplicationPropertiesShowHint
     left = 680
     top = 352

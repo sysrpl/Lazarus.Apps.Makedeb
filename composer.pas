@@ -17,7 +17,7 @@ interface
 
 uses
   Classes, SysUtils, Graphics, Controls, Forms, StdCtrls, Dialogs, Buttons,
-  ExtDlgs, ExtCtrls, FileUtil, Process, FormState, DebianPack,
+  ExtDlgs, ExtCtrls, FileUtil, Process, DebianPack,
   Codebot.System,
   Codebot.Text,
   Codebot.Text.Xml,
@@ -62,6 +62,7 @@ type
     Label8: TLabel;
     Label9: TLabel;
     procedure AppButtonClick(Sender: TObject);
+    procedure AppEditChange(Sender: TObject);
     procedure ApplicationPropertiesShowHint(var HintStr: string;
       var CanShow: Boolean; var HintInfo: THintInfo);
     procedure BuildButtonClick(Sender: TObject);
@@ -79,6 +80,7 @@ type
     FCancelled: Boolean;
     FPriorStatus: TProgressStatus;
     FPriorCaption: string;
+    FForceDepends: string;
     procedure DisableEdits;
     procedure DoThreadDone(Sender: TObject);
     procedure DoThreadStatus(Sender: TObject);
@@ -104,7 +106,10 @@ var
   S: string;
   I: Integer;
 begin
+  FileName := FileName + '.mkdeb';
   D := DocumentCreate;
+  if FileExists(FileName) then
+    D.Load(FileName);
   N := D.Force('data');
   F := N.Filer;
   for I := 0 to ControlCount - 1 do
@@ -119,13 +124,14 @@ begin
     else if Control is TCheckBox then
       F.WriteBool(Control.Name, TCheckBox(Control).Checked);
   end;
+  S := FPackage.Depends.Join(', ');
+  F.WriteStr('depends', S);
   S := GetTempDir(True);
   S := PathCombine(S, ExtractFileNameOnly(FileName) + '.png');
   FCustom.SaveToFile(S);
   Buffer.LoadFromFile(S);
   F.WriteStr('icon', HexEncode(Buffer));
   FileDelete(S);
-  FileName := FileName + '.mkdeb';
   D.Save(FileName);
 end;
 
@@ -158,6 +164,7 @@ begin
       else if Control is TCheckBox then
         TCheckBox(Control).Checked := F.ReadBool(Control.Name);
     end;
+    FForceDepends := F.ReadStr('forceDepends');
     FCustom.Clear;
     S := F.ReadStr('icon');
     if S.Length > 1000 then
@@ -388,6 +395,7 @@ begin
     FPackage.Caption := Trim(CaptionEdit.Text);
     Validate(FPackage.Caption.Length > 1, 'Invalid caption', CaptionEdit);
     FPackage.Name := Trim(PackageEdit.Text);
+
     Validate(FPackage.Name.IsIdentifier, 'Invalid package identifier', PackageEdit);
     FPackage.Version := Trim(VerisonEdit.Text);
     Validate(SectionBox.ItemIndex > -1, 'Invalid category', SectionBox);
@@ -413,6 +421,7 @@ begin
       S := 'misc';
     end;
     FPackage.Section := S;
+    FPackage.ForceDepends := FForceDepends;
     FPackage.Author := Trim(AuthorEdit.Text);
     FPackage.Website := Trim(WebsiteEdit.Text);
     FPackage.ShortInfo := Trim(ShortEdit.Text);
@@ -425,18 +434,31 @@ begin
     BuildButton.Enabled := False;
     FCancelled := False;
     DisableEdits;
+    if FForceDepends <> '' then
+      Caption := 'Debian Packager - force depends'
+    else
+      Caption := 'Debian Packager';
     FThread := TSimpleThread.Create(FPackage.Build, DoThreadStatus, DoThreadDone);
   end;
 end;
 
 procedure TComposeForm.AppButtonClick(Sender: TObject);
+var
+  S: string;
 begin
   if OpenDialog.Execute then
   begin
     AppEdit.Text := OpenDialog.FileName;
     LoadPackage(AppEdit.Text);
+    S := FForceDepends;
     AppEdit.Text := OpenDialog.FileName;
+    FForceDepends := S;
   end;
+end;
+
+procedure TComposeForm.AppEditChange(Sender: TObject);
+begin
+  FForceDepends := '';
 end;
 
 end.

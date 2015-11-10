@@ -47,6 +47,7 @@ type
     ShortInfo: string;
     LongInfo: string;
     Depends: StringArray;
+    ForceDepends: string;
     FailReason: string;
   public
     constructor Create;
@@ -171,6 +172,11 @@ var
   S: string;
 begin
   Depends.Clear;
+  if ForceDepends <> '' then
+  begin
+    Depends := ForceDepends.Split(', ');
+    Exit;
+  end;
   FThread.Status := 'Building library cache';
   LibCache := DependsRun('ldconfig', ['-p']).Split(#10);
   FThread.Status := 'Reading libraries';
@@ -284,11 +290,9 @@ var
 begin
   S := PathCombine(FBasePath, 'usr/local/bin/');
   DirForce(PathCombine(FBasePath, 'usr/local/bin/'));
-  S := PathCombine(FBasePath, 'usr/local/bin/' +
-    FileExtractName(FileName));
+  S := PathCombine(FBasePath, 'usr/local/bin/' + FileExtractName(FileName));
   FileDelete(S);
   RunCommand('cp', [FileName, S], S);
-  WriteLn(S);
   DirForce(PathCombine(FBasePath, 'DEBIAN'));
   Control.Push('Package: ' + Name);
   Control.Push('Version: ' + Version);
